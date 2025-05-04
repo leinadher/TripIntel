@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from scripts.geo_functions import geocode_place, get_route_coords, seconds_to_hours, meters_to_km
 from datetime import datetime, time, timedelta
 from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode
+from st_aggrid.shared import JsCode
 import io
 import xlsxwriter
 from pathlib import Path
