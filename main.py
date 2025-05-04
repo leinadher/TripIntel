@@ -10,6 +10,7 @@ import io
 import xlsxwriter
 from pathlib import Path
 import base64
+import uuid
 
 load_dotenv()
 
@@ -66,6 +67,17 @@ st.sidebar.subheader("Next Travel Segment")
 
 with st.sidebar.form("add_segment"):
     if not st.session_state.trip_df.empty:
+
+        # Ensure required columns exist
+        required_columns = [
+            "from_place", "from_lat", "from_lon", "to_place", "to_lat", "to_lon",
+            "departure_dt", "arrival_dt", "transport_type", "notes",
+            "distance_m", "duration_s"
+        ]
+        for col in required_columns:
+            if col not in st.session_state.trip_df.columns:
+                st.session_state.trip_df[col] = None
+
         last_segment = st.session_state.trip_df.iloc[-1]
         last_to_place = last_segment["to_place"]
         last_to_lat = last_segment["to_lat"]
@@ -120,9 +132,15 @@ with st.sidebar.form("add_segment"):
             st.stop()
 
         coords, duration, distance = get_route_coords(from_lat, from_lon, to_lat, to_lon, transport)
+
+        if duration is None or distance is None:
+            st.error("Could not calculate route — check if the locations are reachable by this transport mode.")
+            st.stop()
+
         arrival_datetime = departure_datetime + timedelta(seconds=duration)
 
         new_row = {
+            "id": str(uuid.uuid4()),
             "from_place": from_place,
             "from_lat": from_lat,
             "from_lon": from_lon,
@@ -251,26 +269,31 @@ with st.expander("📊 Trip Statistics", expanded=False):
                 unsafe_allow_html=True
             )
 
-# --- Table Display --- #
+
+##############
 
 with st.expander("📜 Trip Breakdown", expanded=False):
-    df_display = st.session_state.trip_df.copy()
+    if "trip_df" not in st.session_state:
+        st.session_state.trip_df = pd.DataFrame()
 
-    if not df_display.empty:
-        # Ensure sort_order exists for consistent row order
-        if "sort_order" not in df_display.columns:
-            df_display["sort_order"] = list(range(len(df_display)))
+    df = st.session_state.trip_df.copy()
 
-        df_display = df_display.sort_values("sort_order").reset_index(drop=True)
+    # Ensure 'id' column exists
+    if "id" not in df.columns:
+        df["id"] = [str(uuid.uuid4()) for _ in range(len(df))]
+
+    if not df.empty:
+        # Ensure sort_order exists
+        if "sort_order" not in df.columns:
+            df["sort_order"] = list(range(len(df)))
+
+        df = df.sort_values("sort_order").reset_index(drop=True)
 
         # Add human-readable fields
-        df_display["distance_km"] = df_display["distance_m"].apply(meters_to_km)
-        df_display["duration_hr"] = df_display["duration_s"].apply(seconds_to_hours)
+        df["distance_km"] = df["distance_m"].apply(meters_to_km) if "distance_m" in df.columns else 0.0
+        df["duration_hr"] = df["duration_s"].apply(seconds_to_hours) if "duration_s" in df.columns else 0.0
 
-        # Add delete checkbox column
-        df_display["delete"] = False
-
-        # Color mapping for transport types
+        # Row coloring
         row_style_js = JsCode("""
         function(params) {
             const colors = {
@@ -285,56 +308,77 @@ with st.expander("📜 Trip Breakdown", expanded=False):
         }
         """)
 
-        # Visible and editable columns
         visible_cols = [
-            "from_place", "to_place", "departure_dt", "arrival_dt",
-            "transport_type", "notes", "distance_km", "duration_hr", "delete"
+            "from_place", "id", "to_place", "departure_dt", "arrival_dt",
+            "transport_type", "notes", "distance_km", "duration_hr"
         ]
         editable_cols = [
             "from_place", "to_place", "departure_dt", "arrival_dt",
-            "transport_type", "notes", "delete"
+            "transport_type", "notes"
         ]
 
-        gb = GridOptionsBuilder.from_dataframe(df_display[visible_cols])
+        gb = GridOptionsBuilder.from_dataframe(df[visible_cols])
         gb.configure_columns(editable_cols, editable=True)
         gb.configure_column("transport_type", editable=True, cellEditor="agSelectCellEditor",
                             cellEditorParams={"values": list(TRANSPORT_OPTIONS.keys())})
-        gb.configure_column("delete", header_name="🗑️ Delete", editable=True,
-                            cellEditor="agCheckboxCellEditor")
-        gb.configure_grid_options(rowDragManaged=True)
+        gb.configure_column("id", editable=False, hide=True)
+        gb.configure_column("from_place", headerCheckboxSelection=True, checkboxSelection=True)
         gb.configure_selection("multiple", use_checkbox=True)
         gb.configure_grid_options(getRowStyle=row_style_js)
-
         grid_options = gb.build()
 
         grid_response = AgGrid(
-            df_display[visible_cols],
+            df[visible_cols],
             gridOptions=grid_options,
-            update_mode=GridUpdateMode.VALUE_CHANGED,
+            update_mode=GridUpdateMode.MODEL_CHANGED,
             height=450,
             fit_columns_on_grid_load=True,
-            allow_unsafe_jscode=True
+            key="trip_segments_grid_final",
+            allow_unsafe_jscode=True,
+            returned_objects=["selected_rows"]
         )
 
-        updated_df = pd.DataFrame(grid_response["data"])
+        selected_rows = grid_response.get("selected_rows")
+        if selected_rows is None:
+            selected_rows = []
+        selected_ids = [row["id"] for row in selected_rows if isinstance(row, dict) and "id" in row]
 
-        # Preserve row order
-        updated_df["sort_order"] = updated_df.index
-
-        # --- Button Actions --- #
+        # --- Buttons --- #
         col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
 
         with col1:
-            if st.button("🗑️ Delete Checked Rows"):
-                before = len(updated_df)
-                updated_df = updated_df[updated_df["delete"] != True].drop(columns="delete")
-                after = len(updated_df)
-                st.session_state.trip_df = updated_df.drop(columns=["distance_km", "duration_hr"], errors="ignore")
-                st.success(f"Deleted {before - after} row(s).")
-                st.rerun()
+            
+            if st.button("🗑️ Delete Selected Rows"):
+                st.write(selected_rows)
+                selected_ids = []
+                if isinstance(selected_rows, list) and len(selected_rows) > 0:
+                    # If it's a list of something (potentially dicts)
+                    for row in selected_rows:
+                        if isinstance(row, dict) and "id" in row:
+                            selected_ids.append(row["id"])
+                        elif hasattr(row, 'get') and row.get('id'):
+                            selected_ids.append(row.get('id'))
+                        elif isinstance(row, pd.Series) and 'id' in row:
+                            selected_ids.append(row['id'])
+                        elif isinstance(row, dict) and 'data' in row and isinstance(row['data'], dict) and 'id' in row['data']:
+                            selected_ids.append(row['data']['id'])
+                elif isinstance(selected_rows, pd.DataFrame) and 'id' in selected_rows.columns:
+                    selected_ids = selected_rows['id'].tolist()
+
+                if selected_ids:
+                    new_df = st.session_state.trip_df[~st.session_state.trip_df["id"].isin(selected_ids)].reset_index(drop=True)
+                    st.session_state.trip_df = new_df
+                    st.success(f"Deleted {len(selected_ids)} row(s).")
+                    st.rerun()
+                else:
+                    st.warning("Please select rows to delete.")
+
+            st.caption(f"{len(selected_rows)} row(s) selected.")
 
         with col2:
             if st.button("🔄 Update Changes"):
+                updated_df = pd.DataFrame(grid_response["data"])
+                updated_df["sort_order"] = updated_df.index
                 updated_rows = []
                 for i, row in updated_df.iterrows():
                     from_lat, from_lon = geocode_place(row["from_place"])
@@ -348,7 +392,12 @@ with st.expander("📜 Trip Breakdown", expanded=False):
                         from_lat, from_lon, to_lat, to_lon, row["transport_type"]
                     )
 
+                    if duration is None or distance is None:
+                        st.warning(f"Could not calculate route for row {i}. Skipping update.")
+                        continue
+
                     updated_rows.append({
+                        "id": row["id"],
                         "from_place": row["from_place"],
                         "from_lat": from_lat,
                         "from_lon": from_lon,
@@ -372,7 +421,7 @@ with st.expander("📜 Trip Breakdown", expanded=False):
             csv_buffer = io.StringIO()
             st.session_state.trip_df.to_csv(csv_buffer, index=False)
             st.download_button(
-                label="📀 Download as CSV",
+                label="💾 Download as CSV",
                 data=csv_buffer.getvalue(),
                 file_name="trip_segments.csv",
                 mime="text/csv"
@@ -383,7 +432,7 @@ with st.expander("📜 Trip Breakdown", expanded=False):
             with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
                 st.session_state.trip_df.to_excel(writer, index=False, sheet_name="TripSegments")
             st.download_button(
-                label="📈 Download as Excel",
+                label="📊 Download as Excel",
                 data=excel_buffer.getvalue(),
                 file_name="trip_segments.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
