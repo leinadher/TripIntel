@@ -1,4 +1,4 @@
-# 🌍 TripIntel – Intelligent Trip Planning & Visualization Tool
+# 🌍 TripIntel – Trip Intelligence
 
 **Author:** Daniel Herrera  
 **Date:** 03/05/2025  
