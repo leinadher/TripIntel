@@ -43,7 +43,7 @@ Key features include:
 
 ## 4. Data & Libraries
 
-TripMapper utilizes well-supported libraries and mapping tools:
+TripIntel utilizes well-supported libraries and mapping tools:
 
 - 🐍 **Python + Streamlit** – core application and frontend framework.
 - 📍 **geopy / haversine / folium** – distance calculations and map rendering.
@@ -56,7 +56,7 @@ TripMapper utilizes well-supported libraries and mapping tools:
 To launch the app on your local machine:
 
 ```bash
-git clone https://github.com/leinadher/TripMapper.git
-cd TripMapper
+git clone https://github.com/leinadher/TripIntel.git
+cd TripIntel
 pip install -r requirements.txt
 streamlit run main.py
