@@ -7,7 +7,7 @@
 
 ## 1. Project Overview
 
-**TripMapper** is a Streamlit-based web application designed to assist users in planning travel routes interactively. The tool allows users to create GPS-based travel segments, calculate total distance and time, and visualize results on an interactive map and dynamic table. With built-in export functionality, users can also download their itineraries in Excel or CSV formats for offline use.
+**TripIntel** is a Streamlit-based web application designed to assist users in planning travel routes interactively. The tool allows users to create GPS-based travel segments, calculate total distance and time, and visualize results on an interactive map and dynamic table. With built-in export functionality, users can also download their itineraries in Excel or CSV formats for offline use.
 
 Key features include:
 
