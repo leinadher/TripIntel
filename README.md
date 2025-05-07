@@ -17,6 +17,8 @@ Key features include:
 - 📊 **Dynamic Table View**: Lists all segments, times, and distances with editable fields.
 - 📤 **Export Options**: Download your itinerary as a clean Excel or CSV spreadsheet.
 
+➡️ **[Live App](https://tripintel.streamlit.app/)**  
+
 ---
 
 ## 2. Repository Structure
